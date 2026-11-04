@@ -144,9 +144,8 @@ OON**. Everything else stays coinsurance.
 
 Real example (CRMC PPOs): ER `$500` in all four tiers; Urgent Care `$75` in
 Tier 1/Tier 2/OON (Platinum N/A). So `cross_tier_copays = {"307": 500,
-"312": 75}`. Ambulance `$100` in all tiers lives in the "Other" grouping, whose
-sub-mapping is not yet confirmed (see `field_mapping.md`); identify the specific
-"O" service ID to place it.
+"312": 75}`. Ambulance `$100` in all tiers is O `402` (verified v5.1, see
+`field_mapping.md`): add `"402": 100` to `cross_tier_copays`.
 
 On HDHP/CDHP plans, ER and Urgent Care are usually coinsurance in every tier
 (CRMC CDHP: ER 85% all tiers; Urgent Care 90/90/70/50), so there are no
@@ -201,7 +200,7 @@ Tier 1 (Platinum) copays:
 CDHP Tier 1: all coinsurance, no copays.
 
 Cross-tier copays (Tier 2 and OON, both PPOs): ER `$500`, Urgent Care `$75`.
-(Ambulance `$100` all tiers is in the "Other" grouping - identify the O-sequence.)
+(Ambulance `$100` all tiers is O `402`; add it to `cross_tier_copays`.)
 
 Plan-dict fields used (see the commented multi-tier example in the embedded build
 script): `facility_lines` (IP rows all `150`/`350` with `basis: "per_day"`, `op_surgery_hospital: None`,

@@ -267,7 +267,7 @@ PLAN_DICTS = [
         "t1_flat_copays": {"307": {"copay": 250, "plan_pays": 0.80}, "312": 50},
         # Services whose coinsurance differs from the tier default, or waives
         # the deductible ("30% Cost Sharing, Deductible does not apply"):
-        # "t1_service_coins": {"403": 0.50, "601": {"plan_pays": 0.80, "after_ded": False}},
+        # "t1_service_coins": {"404": 0.50, "604": {"plan_pays": 0.80, "after_ded": False}},  # 404 DME, 604 routine imaging
         # REQUIRED: the SBC's facility rows (None = the row prints the tier
         # default coinsurance). E.g. "$150 copay/admission, 10% coinsurance,
         # deductible does not apply" is
@@ -397,8 +397,15 @@ VALID_PLAN_TYPES = COPAY_PLAN_TYPES + ("HDHP",)
 # Accordion parent row -> PlanElement child groupings (the dropdown hierarchy).
 # A value supplied for a specific UIMedCatId_Sequence wins; otherwise every
 # PlanElement in the grouping inherits the parent row's tier value. Notes:
-# - PP and SP both map to grouping PH (physician); they are pinned to their
-#   exact sequences (509 PCP / 511 Specialist) so the two rows can differ.
+# - PP and SP both map to grouping PH (physician); each is pinned to ONE
+#   exact sequence so the two rows can differ. Verified by a pinned Claros
+#   export (v5.1, AZ Blue, November 2026): the accordion "PP" row is the
+#   "Physician Other(PH)" ROLLUP (its children are 501/504/510/513/508), NOT
+#   PCP - PCP (509) has no display row at all. The "SP" row is the "Specialty
+#   Physician" rollup. So PP mirrors 508 ("PH Other", never a preventive row)
+#   and SP mirrors 511 ("PH Special Visit"). Before v5.1 PP mirrored 509 and
+#   the Physician Other header displayed the PCP copay over specialist-copay
+#   children (known_issues.md #20).
 # - LP (lab) has no accordion row of its own and rolls up under O.
 # - GBL elements are global/rollup rows the build deliberately never touches.
 # - RX is handled by the Rx loop against RX_SEQ_MAP, not by this map.
@@ -406,7 +413,40 @@ VALID_PLAN_TYPES = COPAY_PLAN_TYPES + ("HDHP",)
 # KNOWN_GROUPINGS to refuse shells containing groupings no branch handles.
 MEDTYPE_TO_GROUPINGS = {"IP": ("IP",), "OP": ("OP",), "RAD": ("RAD",),
                         "O": ("O", "LP")}
-MEDTYPE_TO_SEQ = {"PP": "509", "SP": "511"}
+MEDTYPE_TO_SEQ = {"PP": "508", "SP": "511"}
+
+# Claros service-row names by UIMedCatId_Sequence. EVERY medical sequence is
+# now VERIFIED from a pinned export (v5.1: a distinct copay keyed on each named
+# UI line of a PPO scenario, exported, and read back - field_mapping.md
+# "Medical service-ID crosswalk"). The UI rollup rows (Inpatient, Outpatient,
+# Specialty Physician, Physician Other, Other) are DISPLAY ONLY: the values
+# keyed on them landed on PlanDesignAccordion1 rows, never on a PlanElement.
+SERVICE_NAMES = {
+    # IP (UI rollup "Inpatient(IP)" -> accordion IP row)
+    "101": "IP Maternity", "102": "IP Medical", "103": "IP MHSA",
+    "104": "IP NICU", "105": "IP Surgical",
+    # OP (UI rollup "Outpatient(OP)" -> accordion OP row; ER and UC are own lines)
+    "307": "ER", "308": "OP Other", "309": "OP Surgery - Hospital",
+    "311": "OP Surgery - ASC", "312": "Urgent Care",
+    # RAD (UI rollup "Radiology Complex" -> accordion RAD row)
+    "601": "RAD Complex OP Hospital", "602": "RAD Complex OP Imaging Center",
+    "604": "Radiology Routine",
+    # LP (own line, no accordion row)
+    "201": "Lab Pathology",
+    # PH - Primary Physician (own line, no accordion row)
+    "509": "PCP",
+    # PH - children of UI rollup "Specialty Physician" -> accordion SP row
+    "511": "PH Special Visit", "503": "PH Consultation", "506": "PH Maternity",
+    "514": "PH Therapy", "507": "PH Mental Health", "512": "PH Substance Abuse",
+    "502": "PH Chiro",
+    # PH - children of UI rollup "Physician Other(PH)" -> accordion PP row
+    "501": "PH Anesthesia", "504": "PH Immunizations", "510": "PH Preventive",
+    "513": "PH Surgery", "508": "PH Other",
+    # O - children of UI rollup "Other" -> accordion O row
+    "401": "O All Other", "402": "O Ambulance", "403": "O Dialysis Facility",
+    "404": "O DME", "405": "O Home Health", "406": "O Hospice", "407": "O Rx - Non - PBM",
+    "408": "O SNF",
+}
 KNOWN_GROUPINGS = tuple(sorted(set(MED_GROUPINGS) | {"RX", "GBL"}))
 
 # ACA preventive care / immunizations. Confirmed from two independent sources:
@@ -594,6 +634,29 @@ def set_accordion_med(scenario, tier, med_type, copay_min, ded_applies, coins_pc
             if f"ParticipantPctT{tier_n}" in n.attrib:
                 n.set(f"ParticipantPctT{tier_n}",
                       "" if participant_pct is None else str(participant_pct))
+
+
+def mirror_accordion_from_element(scenario, tier, med_type, subplan):
+    """Write a PP/SP accordion row as an exact mirror of the PlanElement its
+    rollup is pinned to (MEDTYPE_TO_SEQ), read back AFTER the tier's element
+    loop. Copay-typed: copay, the element's three deductible flags, plan pct
+    100, member share from Copay1Perc. Coinsurance-typed: no copay, the
+    element's flags and CoInsRate. Check 8 verifies the same correspondence.
+    (v5.1: replaces computing the row from plan-dict keys, which mirrored PCP
+    onto the Physician Other rollup - known_issues.md #20.)"""
+    seq = MEDTYPE_TO_SEQ[med_type]
+    pe = next((p for p in subplan.findall("PlanElement")
+               if p.get("UIMedCatId_Sequence") == seq), None)
+    if pe is None:
+        return
+    flags = tuple(pe.get(f"Deductible{i}Applies") == "Y" for i in ("1", "2", "3"))
+    if pe.get("Copay1Flag") == "Y" and pe.get("Copay1Min") not in (None, ""):
+        perc = pe.get("Copay1Perc")
+        set_accordion_med(scenario, tier, med_type, pe.get("Copay1Min"), flags, "100",
+                          None if perc in (None, "") else coins(float(perc) * 100))
+    else:
+        set_accordion_med(scenario, tier, med_type, None, flags,
+                          int(round(float(pe.get("CoInsRate") or 1) * 100)))
 
 
 def set_accordion_rx(scenario, rx_type, rx_subtype, copay, ded1, ded2, ded3):
@@ -1009,9 +1072,11 @@ def apply_plan_design(scenario, pd):
     # PPO Platinum uses copays (facility per-day + per-visit) mapped by Claros
     # service ID; coinsurance services get the tier plan-pays rate. HDHP Platinum
     # is all coinsurance. Copay ID crosswalk confirmed from the client's Claros fill:
-    #   IP 101-105 = inpatient subtypes (per-day facility copay)
+    #   Full verified name map: SERVICE_NAMES (v5.1 pinned export). In short:
+    #   IP 102 Medical / 105 Surgical / 101 Maternity / 103 MHSA / 104 NICU
     #   307=ER 308=OP Other 309=OP Surgery Hospital 311=OP Surgery ASC 312=Urgent Care
-    #   509=PCP 511=Specialist ; 601/602/604=Radiology 201=Lab 401-408=Other
+    #   509=PCP 511=Specialist (Special Visit) ; 601/602=Complex imaging
+    #   (hospital / imaging center) 604=Routine imaging ; 201=Lab ; 401-408=Other
     prev_covered = pd.get("preventive_in_net_covered", True)
     svc_coins = pd.get("t1_service_coins", {})  # seq -> plan_pays scalar or {"plan_pays":, "after_ded":}
     if pd["plan_type"] in COPAY_PLAN_TYPES:
@@ -1075,21 +1140,16 @@ def apply_plan_design(scenario, pd):
             set_accordion_med(scenario, "T1", "IP", None, ad_, int(round(pp_ * 100)))
         else:
             set_accordion_med(scenario, "T1", "IP", None, True, int(pd["in_net_plan_pays"] * 100))
-        # PP/SP rows mirror the RESOLVED element value (flat wins over the
-        # pcp_copay/specialist_copay keys, exactly as the element loop above),
-        # so an explicit t1_flat_copays["509"/"511"] override can't desync the
-        # display from the math. Copay rows keep CoinsurancePlanPct=100 with
-        # any coinsurance component in ParticipantPct (member share), mirroring
-        # the Copay1Perc / CoInsRate="1" element encoding.
+        # PP/SP rows mirror the element ACTUALLY WRITTEN for their pinned
+        # sequence (MEDTYPE_TO_SEQ: PP = 508 "PH Other", the Physician Other
+        # rollup; SP = 511, the Specialty Physician rollup), read back after the
+        # element loop above, so no override path (t1_flat_copays,
+        # t1_service_coins, ph_other_copay, the PH fill) can desync the display
+        # from the math. Copay rows keep CoinsurancePlanPct=100 with any
+        # coinsurance component in ParticipantPct (member share), mirroring the
+        # Copay1Perc / CoInsRate="1" element encoding.
         for med in ("PP", "SP"):
-            v = flat.get(MEDTYPE_TO_SEQ[med])
-            if v is None:   # no office copay -> the row is plain coinsurance
-                set_accordion_med(scenario, "T1", med, None, True,
-                                  int(pd["in_net_plan_pays"] * 100))
-            else:
-                c, ad, pp = copay_spec(v)
-                set_accordion_med(scenario, "T1", med, c, (False, ad, False), "100",
-                                  None if pp is None else coins((1 - pp) * 100))
+            mirror_accordion_from_element(scenario, "T1", med, sp1)
         for med in ("OP", "RAD", "O"):
             set_accordion_med(scenario, "T1", med, None, True, int(pd["in_net_plan_pays"] * 100))
     else:  # HDHP: coinsurance, no copays (no pre-deductible copays on an HSA-qualified
@@ -1135,13 +1195,6 @@ def apply_plan_design(scenario, pd):
                                 pd.get("t2_specialist_copay", pd["specialist_copay"]))
         for med in MED_ALL:
             set_accordion_med(scenario, "T2", med, None, True, int(pd["t2_plan_pays"] * 100))
-        if t2_office:
-            # Mirror the RESOLVED Tier 2 element values (t2flat wins), same
-            # convention as Tier 1: plan pct 100, member share in ParticipantPct.
-            for med in ("PP", "SP"):
-                c, ad, pp = copay_spec(t2flat[MEDTYPE_TO_SEQ[med]])
-                set_accordion_med(scenario, "T2", med, c, (False, ad, False), "100",
-                                  None if pp is None else coins((1 - pp) * 100))
         for pe in sp2.findall("PlanElement"):
             seq = pe.get("UIMedCatId_Sequence")
             grp = pe.get("MedicalGrouping")
@@ -1155,6 +1208,9 @@ def apply_plan_design(scenario, pd):
                 set_planelement_flat_copay(pe, t2_ph_fill)
             elif grp in MED_GROUPINGS:
                 set_planelement_coins(pe, pd["t2_plan_pays"])
+        # PP/SP display rows mirror the written Tier 2 elements (see Tier 1).
+        for med in ("PP", "SP"):
+            mirror_accordion_from_element(scenario, "T2", med, sp2)
 
     # ===================== TIER 3 (out-of-network) ============================
     cross = pd.get("cross_tier_copays", {}) if pd["plan_type"] in COPAY_PLAN_TYPES else {}
@@ -1234,10 +1290,10 @@ def apply_plan_design(scenario, pd):
 # as a hard fail and tolerates additions only from this table:
 #   CensusType1 - apply_minimal_placeholders writes the 1-EE census
 #   Deduct      - set_deductible writes ded/MOOP values the blank shell omits
-#   PlanElement - the copay setters (Copay1 family; shrink once the
-#                 Copay1-vs-Copay2 question is verified against a real
-#                 copay-bearing Claros export - the blank shell carries a
-#                 populated Copay2 group but no Copay1Min/Perc/Max anywhere)
+#   PlanElement - the copay setters (Copay1 family, export-verified in v5.1:
+#                 a copay-bearing Claros export carries Copay1Min with
+#                 Copay2Flag="N". The blank shell has no Copay1Min/Perc/Max,
+#                 so the build must still ADD them - this entry stays.)
 #   StopLoss    - placeholder self-funded fees
 SIG_ATTR_ADD_EXEMPT = {
     "CensusType1": {"TotalEE", "EEOnlyPct"},
@@ -1902,7 +1958,9 @@ def print_coverage_table(out_path):
                 rows.setdefault((grp, desc), []).append(seq)
             print(f"  {tier_names[spid]}:")
             for (grp, desc), seqs in sorted(rows.items()):
-                print(f"    {grp:<4} {','.join(sorted(seqs))}: {desc}")
+                named = ", ".join(f"{q} {SERVICE_NAMES[q]}" if q in SERVICE_NAMES else q
+                                  for q in sorted(seqs))
+                print(f"    {grp:<4} {desc}: {named}")
     print("\n*** Compare this table against the SBC's benefit table line by line "
           "before presenting the file. Checks validate the BUILD, not the "
           "READING - a copay the SBC prints but no row above shows was never "

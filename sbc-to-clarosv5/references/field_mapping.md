@@ -70,7 +70,7 @@ override with `ph_other_copay` or per-sequence `t1_flat_copays`). Copaying only
 509/511 and coinsuring the other 12 was the v3.1 behavior testers reported as
 "the Specialist copays did not fill in the drop down / Physician other".
 
-Also update the `<PlanDesignAccordion1>` rows where `MedType="PP"` (primary) and `MedType="SP"` (specialist) under `Scenario/MedCategoryParentNode/PlanDesignAccordion1ParentNodes`.
+The build also mirrors the `<PlanDesignAccordion1>` rows under `Scenario/MedCategoryParentNode/PlanDesignAccordion1ParentNodes`: `MedType="SP"` is the Specialty Physician rollup (mirrors `511`) and `MedType="PP"` is the **Physician Other(PH) rollup, not PCP** (mirrors `508`). PCP `509` has no display row (verified v5.1; known_issues.md #20).
 
 For copay-based services, set on the PlanElement:
 - `Copay1Flag="Y"`
@@ -115,39 +115,89 @@ and Claros cannot split 504 from 510 semantically without confirmed names. The
 build leaves OON preventive at the OON tier default; note it in the output
 presentation if the SBC's OON preventive line says otherwise.
 
-## Medical service-ID crosswalk (all groupings)
+## Medical service-ID crosswalk (all groupings) - FULLY VERIFIED (v5.1)
 
 The XML identifies each medical service ONLY by an internal Claros ID
 (`UIMedCatId_Sequence`) plus its `MedicalGrouping`; it carries no service names.
-This crosswalk (confirmed from a client's completed Claros copay table) is how you
-know which PlanElement is which service. It is needed for multi-tier plans where
-different services in the same grouping have different copays (e.g. ER $500 vs OP
-Surgery $120, both grouping `OP`). See `references/multi_tier.md`.
+**Every medical sequence below is verified** by a pinned Claros export (v5.1,
+November 2026, AZ Blue PPO 5000 80 scenario): a distinct copay was hand-keyed on
+every named line of the Claros "Tier Copays" screen, the scenario was exported,
+and each value was read back off exactly one PlanElement. The same names live
+in the build script as `SERVICE_NAMES`, and the post-build SERVICE COVERAGE
+table now prints them beside each sequence.
 
-| Grouping | Sequence(s) | Service | Confidence |
-|----------|-------------|---------|------------|
-| `IP`  | `101` `102` `103` `104` `105` | Inpatient subtypes: Medical / Surgical / Maternity / MHSA (mental health & substance abuse) / NICU. File order is not guaranteed, so the five are only ever written as one group with one value. | Client fill (facility read only) |
-| `OP`  | `307` | Emergency Room (ER) | **Verified twice** (client fill + 2021 GAP/MOU export: $100 copay + 0.3 member coins matching the SBC's ER line exactly) |
-| `OP`  | `308` | Outpatient Other | Client fill (facility read only) |
-| `OP`  | `309` | Outpatient Surgery - Hospital | Client fill (facility read only) |
-| `OP`  | `311` | Outpatient Surgery - ASC (ambulatory surgery center) | Client fill (facility read only) |
-| `OP`  | `312` | Urgent Care | **Verified twice** (client fill + 2021 GAP/MOU export: $30 ded-waived matching the SBC's UC line) |
-| `RAD` | `601` `602` `604` | Radiology (Complex / Routine imaging). **UNCONFIRMED split**, and it may not match real SBCs at all: carriers commonly split imaging by PLACE OF SERVICE (office $/scan vs outpatient-facility coinsurance), which this grouping may not represent. If the SBC splits imaging, treat it as an unmapped-copay stop (see below). | Weak |
-| `LP`  | `201` | Lab / Pathology | Client fill |
-| `PH`  | `509` | Primary Care Physician (PCP) | **Verified twice** |
-| `PH`  | `511` | Specialist | **Verified twice** |
-| `PH`  | `504` `510` | **Preventive care / Immunizations** (which is which not yet pinned; both get identical covered-full treatment so it does not matter for builds) | **Verified twice** (blank-export defaults + 2021 OON treatment) |
-| `PH`  | `501`-`503` `506`-`508` `512`-`514` | Physician - Other: office surgery, therapy/rehab visits, MH outpatient office, chiropractic, allergy, etc. live somewhere in these 9 (+ possibly `OP 308`), but the **individual identities are UNCONFIRMED**. All receive the PH grouping fill. | Names unknown |
-| `O`   | `401`-`408` | Other (DME, ambulance, home health, hospice, etc.). Sub-mapping within `O` is NOT yet confirmed. Ambulance lives here. | Names unknown |
+| Grouping | Seq | Claros UI line | Under UI rollup (accordion row) |
+|----------|-----|----------------|----------------------------------|
+| `IP`  | `102` | IP Medical | Inpatient(IP) -> accordion `IP` |
+| `IP`  | `105` | IP Surgical | Inpatient(IP) |
+| `IP`  | `101` | IP Maternity | Inpatient(IP) |
+| `IP`  | `103` | IP MHSA (mental health / substance abuse) | Inpatient(IP) |
+| `IP`  | `104` | IP NICU | Inpatient(IP) |
+| `OP`  | `309` | OP Surgery - Hospital | Outpatient(OP) -> accordion `OP` |
+| `OP`  | `311` | OP Surgery - ASC | Outpatient(OP) |
+| `OP`  | `308` | OP Other | Outpatient(OP) |
+| `OP`  | `307` | ER(OP) | own line, no accordion row |
+| `OP`  | `312` | Urgent Care(OP) | own line, no accordion row |
+| `RAD` | `601` | RAD Complex OP Hospital (CT/MRI/PET at a hospital outpatient dept) | Radiology Complex (RAD) -> accordion `RAD` |
+| `RAD` | `602` | RAD Complex OP Imaging Center (CT/MRI/PET at a freestanding center) | Radiology Complex (RAD) |
+| `RAD` | `604` | Radiology Routine (x-ray, ultrasound) | own line, no accordion row |
+| `LP`  | `201` | Lab Pathology | own line, no accordion row |
+| `PH`  | `509` | Primary Physician - PCP | own line, **no accordion row** |
+| `PH`  | `511` | PH Special Visit (the specialist office visit) | Specialty Physician -> accordion `SP` |
+| `PH`  | `503` | PH Consultation | Specialty Physician |
+| `PH`  | `506` | PH Maternity (prenatal/postnatal office) | Specialty Physician |
+| `PH`  | `514` | PH Therapy (PT/OT/ST visits) | Specialty Physician |
+| `PH`  | `507` | PH Mental Health (outpatient office) | Specialty Physician |
+| `PH`  | `512` | PH Substance Abuse (outpatient office) | Specialty Physician |
+| `PH`  | `502` | PH Chiro | Specialty Physician |
+| `PH`  | `501` | PH Anesthesia | Physician Other(PH) -> accordion `PP` |
+| `PH`  | `504` | PH Immunizations | Physician Other(PH) |
+| `PH`  | `510` | PH Preventive | Physician Other(PH) |
+| `PH`  | `513` | PH Surgery (physician/surgeon fees) | Physician Other(PH) |
+| `PH`  | `508` | PH Other | Physician Other(PH) |
+| `O`   | `404` | O DME | Other -> accordion `O` |
+| `O`   | `407` | O Rx - Non - PBM (medical-benefit drugs) | Other |
+| `O`   | `402` | O Ambulance | Other |
+| `O`   | `405` | O Home Health | Other |
+| `O`   | `403` | O Dialysis Facility | Other |
+| `O`   | `408` | O SNF (skilled nursing facility) | Other |
+| `O`   | `406` | O Hospice | Other |
+| `O`   | `401` | O All Other | Other |
 
-**What each confidence level permits (v4.0 - fixed, never a session judgment):**
+**Accordion rollup rows are DISPLAY ONLY.** The values keyed on the UI rollup
+rows (Inpatient, Outpatient, Specialty Physician, Physician Other, Other) landed
+on `PlanDesignAccordion1` rows and on NO PlanElement; Claros calculates from the
+PlanElements. Note the trap: **accordion `MedType="PP"` is the "Physician
+Other(PH)" rollup, not PCP** (PCP 509 has no display row). The build mirrors PP
+from `508` (PH Other) and SP from `511` (PH Special Visit); see known_issues.md #20.
 
-| Confidence | Placement |
-|------------|-----------|
-| **Verified twice** | Place directly from the SBC line (`t1_flat_copays`, office copay keys, `RX_SEQ_MAP`). |
-| **Client fill (facility read only)** | Placed ONLY by the build's facility read from `facility_lines`, under the rule in "Facility read" below. Never keyed into `t1_flat_copays` or `t1_service_coins` (the build refuses it). |
-| **Client fill** (`LP 201`) | Not a facility row. Follows the unmapped-copay stop rule below when the SBC prints a copay or off-default rate for lab. |
-| **Weak** / **Names unknown** | Unmapped-copay stop rule below: never guessed, always listed as set-manually-in-Claros. |
+The same export also verified: the copay field family is **Copay1**
+(`Copay1Flag="Y"` + `Copay1Min`, `Copay2Flag="N"`), and an inpatient copay with
+the Per Admit radio writes `IPCopayPerDay="A"` / `IPDayAdmit="A"` on the IP
+elements and `"N"` on everything else, exactly what the build writes.
+
+**Placement rule (v5.1 - fixed, never a session judgment):**
+
+| Sequences | Placement |
+|-----------|-----------|
+| Facility rows: IP `101`-`105`, OP `308` `309` `311` | ONLY by the build's facility read from `facility_lines` ("Facility read" below). Never keyed into `t1_flat_copays` / `t1_service_coins` (the build refuses it). The names are now known, but the SBC's three inpatient rows still do not map one-to-one onto five subtypes, so the one-value rule stands. |
+| Office copays `509` / `511` | `pcp_copay` / `specialist_copay` keys. |
+| Every other PH row | Receives the PH grouping fill (the specialist copay) by default. Override BY NAME per the SBC: a row the SBC prices differently goes in `t1_flat_copays` (a different copay) or `t1_service_coins` (coinsurance), e.g. PH Therapy `514` when the SBC prints rehab at coinsurance, PH Anesthesia `501` / PH Surgery `513` when physician/surgeon fees are coinsurance. |
+| ER `307`, UC `312`, RAD `601` `602` `604`, LP `201`, O `401`-`408` | Place directly from the SBC line: `t1_flat_copays` for a copay, `t1_service_coins` for an off-default or deductible-waived coinsurance (e.g. hospice no charge = `{"406": {"plan_pays": 1.0, "after_ded": False}}`), `cross_tier_copays` for a copay that also applies OON. |
+| Rx `701`-`716` | `RX_SEQ_MAP` (verified twice). |
+
+**What still stops (set manually in Claros, never guessed):** the sequence is
+known for everything now, so the stop rule covers only SBC lines the XML cannot
+EXPRESS on one row:
+- **Place-of-service splits on one SBC line** ("office visit copay or 30%
+  coinsurance" for x-ray, lab, DME, maternity office): Claros has one row per
+  service, not per setting. Leave the row at its default and list the line.
+- **Day-band benefits** (LTAC 50% after day 100, EAR/SNF 50% after day 60/90).
+- **Lines with no Claros row** (telehealth copays, Prosano-style clinic
+  sub-networks on a 2-tier build).
+- **OON-only exceptions on a 2-tier build** (e.g. ambulance OON at the
+  in-network rate after the in-network deductible): there is no OON per-service
+  coinsurance map; only `cross_tier_copays` (copays) reaches OON.
 
 ## Facility read (v4.0)
 
@@ -178,26 +228,25 @@ Notes:
 - The Rx sequence map (`RX_SEQ_MAP` in the build script) is **verified twice**:
   client fill + the 2021 export's accordion rows (701-704 = Mail, 705-708 =
   Retail, each +8 twin = the New/Maintenance split).
-- **Unmapped-copay stop rule**: when the SBC prints a dollar copay or an
-  off-default coinsurance for a service whose sequence is Weak, Names unknown,
-  or plain Client fill (`LP 201`) above (rehabilitation, chiropractic, MH office
-  with its own rate, office imaging, lab) - i.e. anything that is neither
-  Verified twice nor a facility row handled by the facility read -
-  do NOT silently fold it into the grouping fill or tier coinsurance and do NOT
-  guess a sequence. The PH grouping fill covers physician-office copays
-  adequately when they match the office copay; anything it cannot hold must be
-  listed in the output presentation as "the SBC prints [line]; its Claros
-  service row is not yet mapped - set it manually in Claros after upload."
-- **How to close the unknowns** (10-minute procedure, one-time): in the Claros
-  UI, open any plan and hand-key a DISTINCT dollar value on every named service
-  line ($10, $20, $30 ... down the list), export, and read which sequence
-  carries which value. One such export pins every name permanently; update this
-  table and the build's capabilities when it lands.
+- **Stop rule (v5.1)**: every sequence is now named, so a line is a
+  set-manually-in-Claros item ONLY when the XML cannot express it on one row
+  (place-of-service split on one SBC line, day-band benefits, lines with no
+  Claros row, OON-only exceptions on a 2-tier build; see the crosswalk above).
+  List each as "the SBC prints [line]; Claros cannot hold it on one service
+  row - set it manually in Claros after upload." Never silently fold such a
+  line into the grouping fill or tier coinsurance.
+- **Re-pinning procedure** (if a future Claros release changes the screen):
+  open any PPO scenario, hand-key a DISTINCT copay with the deductible waived
+  on every named line of the in-network "Tier Copays" screen (use odd values
+  like 101, 102, ... that cannot collide with real copays, including the
+  rollup rows and every collapsed dropdown such as Specialty Physician), keep a
+  key of line name -> value, export, and read which sequence carries which
+  value. This is how the v5.1 crosswalk was built.
 - Copay placement fields (per PlanElement): fixed copay via `Copay1Flag="Y"` +
   `Copay1Min`; inpatient copay adds `IPCopayPerDay` = the basis code from
   `IP_BASIS_CODES` (Per Admit `"A"`, Per Day `"D"`; the same code is written to
-  the IP accordion row) + `IPDayAdmit="A"` (meaning unverified, unchanged since
-  v3); non-IP rows carry `IPCopayPerDay="N"`; deductible-waived copays set all `Deductible*Applies="N"` and
+  the IP accordion row) + `IPDayAdmit="A"` (export-verified alongside Per
+  Admit in v5.1; its effect under Per Day is still unverified); non-IP rows carry `IPCopayPerDay="N"`; deductible-waived copays set all `Deductible*Applies="N"` and
   `CoInsRate="1"` (plan pays 100% after copay).
 
 ## Rx tier copays
