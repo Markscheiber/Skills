@@ -6,12 +6,12 @@ as **inert text**: it sits inside a double fence (an outer `~~~~~` block wrappin
 an inner ```` ```python ```` block), so nothing parses or runs it automatically.
 It is documentation until you deliberately extract it.
 
-**To run it, Claude does the following:**
+**To run it, Claude does the following (do NOT read this whole file into context or retype the script):**
 
-1. Read the block between the `BEGIN EMBEDDED PYTHON` and `END EMBEDDED PYTHON` markers below.
-2. Take the inner ```` ```python ```` fenced code (drop the outer `~~~~~` fence and the inner ```` ``` ```` fence lines).
-3. Write that code verbatim to `build_claros_xml.py` in your working directory.
-4. Run it with `python3 build_claros_xml.py` (or import its functions), adapting `PLAN_DICTS`, `OUT_FILE`, and `REF_FILE` as SKILL.md describes.
+1. Extract the code with one command (`<skill-dir>` is the folder holding SKILL.md):
+   `awk '/BEGIN EMBEDDED PYTHON/{f=1}/END EMBEDDED PYTHON/{f=0}f' <skill-dir>/references/build_script.md | awk '/^```python/{c=1;next}/^```/{c=0}c' > build_claros_xml.py`
+2. Confirm it parses: `python3 -c "import ast; ast.parse(open('build_claros_xml.py').read())"`.
+3. Never edit `build_claros_xml.py`. Set `REF_FILE`, `OUT_FILE`, `DATA_YEAR`, `TREND_DATE`, `NORMALIZE_DATE` and `PLAN_DICTS` from a separate `run_build.py` that imports it and calls `main()`, exactly as SKILL.md's "Build script usage" shows.
 
 **Setting `REF_FILE` is not optional.** Two references ship with this skill and the script resolves both automatically:
 
@@ -73,8 +73,10 @@ import xml.etree.ElementTree as ET
 # matches, raise with the full search list so the fix is obvious.
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 _SKILL_ASSET_DIRS = [
-    "/mnt/skills/plugins/sbc-to-clarosv5/assets",
-    "/mnt/skills/user/sbc-to-clarosv5/assets",
+    "/mnt/skills/plugins/sbc-to-clarosvtest/assets",
+    "/mnt/skills/user/sbc-to-clarosvtest/assets",
+    "/mnt/skills/plugins/vTest/assets",
+    "/mnt/skills/user/vTest/assets",
     os.path.join(SCRIPT_DIR, "assets"),
     "assets",
 ]
@@ -904,9 +906,8 @@ def apply_plan_design(scenario, pd):
     scenario.set("TrendDate", TREND_DATE)
 
     # Embedded vs aggregate deductible is a PLAN FACT read off the SBC, not a
-    # function of plan type. v3.1 hardcoded N for every non-HDHP, which built
-    # two embedded PPOs as aggregate in POC test 6 (and could do the reverse
-    # on an aggregate HDHP). Every plan type must state it, HDHPs included (v5.0:
+    # function of plan type. Earlier versions set it by plan type instead of
+    # reading the SBC (see the changelog). Every plan type must state it, HDHPs included (v5.0:
     # HDHPs used to default to embedded, which would silently mis-build an
     # aggregate HDHP like Augustana's; the ACA embedding rule covers the MOOP,
     # not the deductible) - the KeyError makes the question unskippable rather

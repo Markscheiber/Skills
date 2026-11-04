@@ -318,4 +318,28 @@ These need separate sources or placeholders:
 - Rx PBM-specific data (rebates, dispensing fees)
 - Network discounts (these are pre-populated in the reference and typically kept)
 
-Use minimal placeholders for these (see `SKILL.md` "Fields to placeholder" table).
+Use minimal placeholders for these (see "Fields to placeholder" below).
+
+## Fields to placeholder (not from SBC)
+
+The SBC does not contain census, enrollment, financial, or stop-loss data. Use these minimal placeholders:
+
+| Field | Placeholder Value |
+|-------|------------------|
+| `CensusType1.TotalEE` | `1` |
+| `CensusType1.EEOnlyPct` | `1` |
+| `CensusType23.EE` (one row only) | `1` (Male, age 40, tier 1) |
+| `EECount.EECount1` | `1` |
+| `EECount.EECount2-5` | `""` (empty string) |
+| `Zip.EnrolledEmp` (first zip) | `1` |
+| `Zip.EnrolledEmp` (other zips) | `0` |
+| `PlanTierEnrollment` | `EE=1, others=0, Total=1` |
+| `Enrollment` | `EEs=1, TotalMembers=1, DependentPerEmployee=1, AdultEquivalent=1` |
+| `StopLoss` PEPM/dollar fees | `1` |
+| `StopLoss` percentages (admin/profit/tax/commission) | `0.01` |
+| `StopLoss.AgMargin` | `1` |
+| `StopLoss.sf_PharmacyRebatePEPM` | `0` |
+| `ReimbursementAccount.EmployeeContribution` | `1` (per tier) |
+| `Normalization.TotalEE` | `1` |
+
+After upload, the user updates these in Claros with real census, enrollment, and underwriting data.

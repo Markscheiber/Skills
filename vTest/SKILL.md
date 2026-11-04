@@ -1,11 +1,11 @@
 ---
-name: "sbc-to-clarosv5"
-description: Build a Claros-compatible XML plan file from carrier Summary of Benefits and Coverage (SBC) PDFs, using an existing Claros XML as a structural reference. ALWAYS use this skill when the user invokes "/sbc-to-clarosv5", or asks to "build a Claros XML", "convert SBC to Claros", "build a Claros plan upload", "create an XML for Claros from these benefits", "build a plan year XML for [client]", or any close variation. Trigger when the user provides SBC PDFs (PPO, HDHP, HMO, EPO) and either references a prior Claros XML or wants a new client/plan-year XML for Claros actuarial software. Handles multi-tier hospital/provider-steerage plans with 3+ network levels. SUPERSEDES sbc-to-clarosv4, sbc-to-clarosv3, sbc-to-clarosv2, sbc-to-xml-claros, and testingversionsbc-to-claros - on overlapping Claros phrasing, ALWAYS prefer this skill. Do NOT trigger for non-Claros benefit summaries, side-by-side comparisons, employee-facing benefit guides (use benefit-guide-pptx), or general SBC analysis without a Claros upload goal.
+name: "sbc-to-clarosvtest"
+description: TEST BUILD of the Claros SBC-to-XML skill, for side-by-side comparison with sbc-to-clarosv5. Use ONLY when the user explicitly invokes "/sbc-to-clarosvtest" or names "sbc-to-clarosvtest" or "vTest". Builds a Claros-compatible XML plan file from carrier Summary of Benefits and Coverage (SBC) PDFs (PPO, HDHP, HMO, EPO, and multi-tier plans with 3+ network levels), using a Claros XML as a structural reference. Do NOT trigger on general Claros or SBC requests without that explicit invocation; those belong to sbc-to-clarosv5.
 ---
 
-# sbc-to-clarosv5
+# sbc-to-clarosvtest
 
-**Version 5.0** (version history: `references/changelog.md`). Supersedes `sbc-to-clarosv4`, `sbc-to-clarosv3`, `sbc-to-clarosv2`, `sbc-to-xml-claros`, and `testingversionsbc-to-claros`.
+**Version 5.1-test** (vTest, built on v5.0; version history: `references/changelog.md`). A test build for side-by-side comparison with `sbc-to-clarosv5`; it does not supersede it.
 
 Build a Claros-compatible XML plan file from carrier SBC PDFs, using an existing Claros XML as a structural reference. The output preserves every structural element of the reference so Claros accepts the upload, while the plan design (deductibles, MOOPs, copays, coinsurance) reflects the new SBCs.
 
@@ -22,7 +22,7 @@ Two blank Claros XML references are bundled: `assets/blank_reference_2tier.xml` 
 1. Read the reference guidance in `references/field_mapping.md` and `references/known_issues.md` BEFORE writing any code. The known_issues file documents landmines that have caused real upload failures — skipping it will produce a file that Claros rejects. **If the SBC/SPD shows more than two network levels of ANY kind**, ALSO read `references/multi_tier.md` first. That includes BOTH multi-tier patterns: (A) provider-steerage plans with a rich/domestic tier plus a broad tier plus OON (different ded/MOOP/coins per tier, e.g. UMR/CRMC), and (B) sub-network copay splits where one in-network copay cell prints two rates (e.g. BCI "ChoiceDocs = $X; All other In-Network = $Y") — same ded/MOOP/coins across both in-network levels, only office/urgent-care copays differ. The reference covers the 4-to-3 tier mapping, the Pattern B configuration (t2_pcp_copay / t2_specialist_copay / t2_flat_copays), single-in-network plans inside a 3-tier file (tier2_active / tier_split), the service-ID crosswalk, rich-tier and cross-tier copays, and the accordion pattern.
 2. Ask the user clarifying questions (see "Clarifying questions" below) before parsing.
 3. Extract the SBC plan design values into a small dictionary per plan.
-4. Reconstitute and run the build script. Because of enterprise restrictions there is no loose `.py` file in this skill; the proven transformation is stored as inert text in `references/build_script.md` (with extraction instructions). Extract it to `build_claros_xml.py` in your working directory, then run it. It is a parameterized version of the proven working transformation. Adapt it as needed to match the new client.
+4. Extract and run the build script WITHOUT editing it (see "Build script usage" below). The script is stored as inert text in `references/build_script.md`; extract it with the one command given there rather than reading the whole file or retyping it, and run it through a small `run_build.py` that sets only `REF_FILE`, `OUT_FILE`, the three date constants and `PLAN_DICTS`. Never change the script's logic. If a plan design cannot be expressed through the plan dict, STOP and tell the user exactly what cannot be modeled; do not patch the script to make it fit.
 5. Validate the output against the reference (structural match check, namespace check, CRLF check).
 6. Present the final XML file to the user with a summary of placeholder fields they will need to update in Claros.
 
@@ -52,7 +52,7 @@ Put it to the user roughly like this, substituting what you actually found:
 
 If the user corrects you, take the correction. The SBC is a summary and does not always show a steerage tier that the SPD does. If the user is unsure, ask for the SPD before building rather than guessing, and read `references/multi_tier.md` before going further.
 
-Once confirmed, set `REF_FILE` explicitly in the script, and state the reference you used in the output presentation so the choice is visible in the record.
+Once confirmed, set `REF_FILE` explicitly in `run_build.py`, and state the reference you used in the output presentation so the choice is visible in the record.
 
 ## Clarifying questions to ask first
 
@@ -60,18 +60,31 @@ After the tier decision above, ask the user (use `ask_user_input_v0` if availabl
 
 1. **Scenario contents**: The output is ALWAYS one file, with every plan as a scenario inside it (`TotalPlans=N`) — never separate files per plan. Confirm which plans go in the file and in what order (the order sets the scenario order in Claros).
 2. **Effective date**: What date should appear in `TrendDate` and the file name? SBCs typically use 1/1/YYYY but Claros file naming convention is often YYYY-10-1 — confirm which the user wants. For a NON-CALENDAR plan year (e.g. 12/01/2025–11/30/2026), `ManualForDataYear` takes the plan year's START year (`2025` in that example) — a builder decision, not a guess; state it in the output presentation.
-3. **Placeholder strategy** for fields not in the SBC (census, enrollment, stop loss, employee contributions): use minimal placeholders ($1 fees, 1 EE, 1% admin) so the file loads, then update in Claros. This is the recommended default. Explain that all-zero values cause Claros upload errors due to divide-by-zero in actuarial calculations.
+3. **Placeholder strategy** (NOT asked; stated under "Treated as a read") for fields not in the SBC (census, enrollment, stop loss, employee contributions): use minimal placeholders ($1 fees, 1 EE, 1% admin) so the file loads, then update in Claros. This is the recommended default. Explain that all-zero values cause Claros upload errors due to divide-by-zero in actuarial calculations.
 4. **OON deductible**: SBCs sometimes say "all Networks" (in-net = OON) and sometimes split them. Confirm interpretation if ambiguous.
 5. **Scenario naming convention**: Confirm the exact scenario names with the user once, then reuse them verbatim. To keep runs consistent, follow a fixed pattern and do not vary it between builds: `<Network> <PlanType> <DeductibleAmount>`, e.g. `ASC PPO 1000`, `ASC HSA HDHP 6800` (omit the network token when the client has a single network, e.g. `PPO 1000`). Rules: (a) NO client name inside scenario names — the client is identified by the file name (`<Client>_Eff_<date>.xml`) and the Claros case, so repeating it in every plan name is noise; (b) no `$` sign anywhere in the name; (c) the deductible number is the individual in-network deductible, digits only; (d) the plan-type token (`PPO`, `HDHP`, `HMO`, `EPO`) must match the actual plan design and must never be swapped between plans (an HSA plan is `HSA HDHP`, not `HSA PPO`); (e) if the client uses an HSA-qualified HDHP, write `HSA HDHP`, not just `HDHP`, only if the SBC/name calls it HSA. When in doubt, mirror the client's own plan labels from the SBC exactly.
 6. **Multi-tier follow-ups** (only when "The tier decision" above landed on 3-tier): the reference itself is already settled, so this question covers only what comes after it. For Pattern A, confirm the 4-to-3 mapping (which real network level gets dropped; the usual answer is Claros Tier 1 = richest, Tier 2 = broad, OON = OON, dropping the preferred tier). For either pattern, tell the user the tier utilization split (`tier_split`) will ship as a placeholder they must set in Claros from actual claims routing, because it is never in an SBC. Offer a starting default rather than bare `$1`-style values: a verified hand-built client file used 95/0/5 (in-net / middle / OON) for an effectively single-in-network plan — propose a sensible split like that, let the user override, and still flag it as a set-in-Claros item. If the user would rather collapse a genuinely multi-tier plan down to 2-tier for simplicity, that is their call to make explicitly, not yours to make silently: ask which level's copays to load and record the collapse as a judgment call in the output presentation.
-7. **Embedded vs aggregate deductible — EVERY plan type, not just HDHPs**: this is a plan fact read off the SBC's family-deductible language, and the build refuses to start ANY plan without it, HDHPs included (`embedded_deductible` is a REQUIRED plan-dict key; a prior version hardcoded non-HDHPs to aggregate and built embedded PPOs wrong in POC testing). Read rule: "each family member must meet their own individual Deductible" / "per person" = embedded (`True`); family deductible met only in aggregate = aggregate (`False`). Read it per plan and confirm your read with the user when the SBC's wording is ambiguous. The plan dict always uses True = embedded; the build writes Claros's inverted letter (`"N"` = embedded, `"Y"` = aggregate), so never reason about the letter directly. If the user overrides the SBC wording, their call governs and gets recorded as a judgment call. Read the HDHP's SBC the same way as any other plan and set `embedded_deductible=False` when it reads aggregate (e.g. "100% aggregate"). No law requires an embedded deductible: the ACA embedding rule applies to the out-of-pocket MAXIMUM (an individual MOOP inside family coverage), not the deductible, so never override an SBC that says aggregate on compliance grounds.
-8. **HDHP coinsurance** (in-net and OON): read each band's plan-pays percentage off the HDHP's OWN SBC, not from a PPO in the same file. Two rules: (a) when a tier's deductible equals its MOOP, the plan pays 100% after deductible for that tier (derived automatically, no coinsurance band exists); (b) when a tier's deductible is below its MOOP, there IS a band and the plan-pays percentage must be read from the SBC — it is NOT derivable from the numbers. The build's coinsurance check flags an OON rate that differs from the HDHP's own in-net band; **if that CONFIRM block prints, ask the user to verify the HDHP OON coinsurance against the SBC before delivering.** (A former second guard that compared the HDHP's OON rate against the PPO's was removed in v3.2 — one carrier, one OON schedule is the normal case and it fired on correct files.) See known_issues.md #12.
+7. **Embedded vs aggregate deductible — EVERY plan type, not just HDHPs**: this is a plan fact read off the SBC's family-deductible language, and the build refuses to start ANY plan without it, HDHPs included (`embedded_deductible` is a REQUIRED plan-dict key; earlier versions set this flag by plan type instead of reading the SBC). Read rule: "each family member must meet their own individual Deductible" / "per person" = embedded (`True`); family deductible met only in aggregate = aggregate (`False`). Read it per plan and confirm your read with the user when the SBC's wording is ambiguous. The plan dict always uses True = embedded; the build writes Claros's inverted letter (`"N"` = embedded, `"Y"` = aggregate), so never reason about the letter directly. If the user overrides the SBC wording, their call governs and gets recorded as a judgment call. Read the HDHP's SBC the same way as any other plan and set `embedded_deductible=False` when it reads aggregate (e.g. "100% aggregate"). No law requires an embedded deductible: the ACA embedding rule applies to the out-of-pocket MAXIMUM (an individual MOOP inside family coverage), not the deductible, so never override an SBC that says aggregate on compliance grounds.
+8. **HDHP coinsurance** (in-net and OON; asked only when check 7's CONFIRM block prints, otherwise stated under "Treated as a read"): read each band's plan-pays percentage off the HDHP's OWN SBC, not from a PPO in the same file. Two rules: (a) when a tier's deductible equals its MOOP, the plan pays 100% after deductible for that tier (derived automatically, no coinsurance band exists); (b) when a tier's deductible is below its MOOP, there IS a band and the plan-pays percentage must be read from the SBC — it is NOT derivable from the numbers. The build's coinsurance check flags an OON rate that differs from the HDHP's own in-net band; **if that CONFIRM block prints, ask the user to verify the HDHP OON coinsurance against the SBC before delivering.** (A former second guard that compared the HDHP's OON rate against the PPO's was removed in v3.2 — one carrier, one OON schedule is the normal case and it fired on correct files.) See known_issues.md #12.
 9. **Copay inventory — walk the whole SBC benefit table, then confirm it**: list every line that prints (a) a dollar copay, (b) a coinsurance rate different from the plan's default, or (c) "Deductible does not apply" on a coinsurance line. Map each to its home: office copays fill the `PH` grouping automatically; the four facility rows (hospital stay facility fee, mental health inpatient, childbirth/delivery facility, outpatient surgery facility fee) are transcribed into `facility_lines` exactly as printed and the BUILD decides their sequences (see "Facility rows" below; do not place them yourself); ER (`307`) and urgent care (`312`) go in `t1_flat_copays`; off-default or deductible-waived coinsurance goes in `t1_service_coins`; anything with NO confirmed sequence (rehabilitation, chiropractic, MH office at its own rate, office-vs-facility imaging splits — see the crosswalk's unmapped rows in `field_mapping.md`) is NOT guessed and NOT silently coinsured — list it to the user now and again as a set-manually-in-Claros item in the output presentation. Show the user the inventory table and get confirmation before building. Six of ten v3.1 POC failures were copays the SBC printed and the build never placed; this question plus the post-build coverage table are the two ends of the countermeasure.
+
+### How to batch these questions (fixed rounds, every build)
+
+`ask_user_input_v0` takes at most 3 questions per call and ends the turn, so the questions always go in these rounds, in this order. Do not reorder, merge, or split them differently between runs; the same SBCs should produce the same questions in the same order.
+
+- **Round 1 (one tool call):** The tier decision (your read and the deciding SBC cell go in the question text itself); question 1 (which plans, in what order); question 2 (effective date).
+- **Round 2 (one tool call):** question 7 (embedded vs aggregate, one question stating your read for every plan); question 5 (scenario names, proposed in the fixed pattern); question 4 (OON deductible) only when the SBC is ambiguous, otherwise stated under "Treated as a read".
+- **Round 3 (one tool call, 3-tier builds only):** question 6 (the 4-to-3 mapping for Pattern A, and the `tier_split` starting default).
+- **Round 4 (inventory):** question 9. Show the copay inventory table in chat, then put one confirm question in the tool call with the options "Inventory is correct, build it" and "Something is missing or wrong". A table shown for review is not a question, so this does not break the no-prose-questions rule above.
+
+Skip a round only when none of its questions apply. Pinned question F1 and question 8 are asked only when their triggers fire, each in its own call. Question 3 is never asked.
 
 ## Treated as a read (stated to the operator, never asked)
 
 These decisions are made by a fixed rule, not by the session and not by the operator. Do NOT turn any of them into a question. State the result in the intake message under this exact heading, **Treated as a read**, so the operator sees what was decided, and repeat it in the output presentation.
 
+- **Placeholder strategy (question 3).** Census, enrollment, stop-loss and contribution fields get the minimal placeholders in `references/field_mapping.md`, "Fields to placeholder", never zeros. State it as: "Placeholders: minimal non-zero values so the file loads; update census, enrollment and stop loss in Claros."
+- **HDHP coinsurance (question 8).** Each HDHP band's plan-pays rate is read from the HDHP's own SBC (100% where deductible equals MOOP). State the rates read. Ask only if check 7 prints its CONFIRM block.
 - **Facility rows (IP 101-105, OP 308/309/311).** Read from the SBC into `facility_lines` and placed by the build under the rule in `references/field_mapping.md`, "Facility read". State it as: "Facility rows: inpatient [value, including per admit or per day] on all five inpatient rows; outpatient surgery [value] on hospital and ASC [or: labeled split / unlabeled split, flagged]; outpatient other [value] (explicit line, or the same as outpatient surgery hospital)." The only exception is a disagreement among the three inpatient rows, which triggers pinned question F1 below.
 
 ## Pinned conditional questions
@@ -90,7 +103,7 @@ Record the answer as `facility_lines["ip_discrepancy_choice"]`: option 1 = `"hos
 
 ## Critical landmines (read `references/known_issues.md` for details)
 
-**Source-document gate — run BEFORE any extraction.** Confirm each uploaded PDF is a MEDICAL SBC (or SPD) with selectable text. If a document is image-only/scanned, is a dental/vision/other non-medical summary, or has values that will not extract cleanly (garbled numbers, cut-off tables), STOP and tell the user what you got and what you need — do not infer, approximate, or OCR-guess dollar values into a plan dict. Every downstream check validates the BUILD, not the READING: a mis-extracted deductible passes all ten checks and ships a wrong actuarial model. Two related rules: when both an SBC and SPD are supplied, state in the output which values came from which document; and when the SBC is silent on a required value (commonly the OON MOOP), ask rather than guess — the output-presentation section requires flagging that judgment call anyway. If the SBC and SPD disagree on the same value, do not pick one - present both values to the user and ask which governs before building.
+**Source-document gate — run BEFORE any extraction.** Confirm each uploaded PDF is a MEDICAL SBC (or SPD) with selectable text. If a document is image-only/scanned, is a dental/vision/other non-medical summary, or has values that will not extract cleanly (garbled numbers, cut-off tables), STOP and tell the user what you got and what you need — do not infer, approximate, or OCR-guess dollar values into a plan dict. Every downstream check validates the BUILD, not the READING: a mis-extracted deductible passes all twelve checks and ships a wrong actuarial model. Two related rules: when both an SBC and SPD are supplied, state in the output which values came from which document; and when the SBC is silent on a required value (commonly the OON MOOP), ask rather than guess — the output-presentation section requires flagging that judgment call anyway. If the SBC and SPD disagree on the same value, do not pick one - present both values to the user and ask which governs before building.
 
 
 These five issues have all caused "Data could not be loaded" errors or other failures in Claros uploads. Every output must address them:
@@ -116,7 +129,7 @@ The build script auto-detects which structure the reference uses. Don't worry ab
 
 Update `Deductible2Individual`, `Deductible2Family`, `MOOPIndividual`, `MOOPFamily` and the matching `EESP`/`EE1C`/`EECC` family-tier copies. Set `CoInsPlanPaysPerc` to the plan-pays percentage (0.80 if SBC says "20% coinsurance", 0.60 if SBC says "40% coinsurance"). **Exception — derive, don't read:** when a tier's deductible equals its MOOP, the plan pays 100% of claims after the deductible (the MOOP is reached the moment the deductible is paid, leaving no coinsurance band), so set that tier's plan-pays to 1.0 regardless of any coinsurance line the SBC prints. The build script derives this automatically. See known_issues.md #11.
 
-`EmbededDeductible` comes from the plan dict's `embedded_deductible` key, and Claros encodes it inverted: `"N"` = embedded, `"Y"` = aggregate (verified against a Claros export, November 2026; the build handles the inversion, so plan dicts keep True = embedded) — REQUIRED for every plan type, HDHPs included (the build raises a KeyError without it; see clarifying question 7 for the SBC read rule). A prior version hardcoded non-HDHPs to `"N"` and built embedded PPOs as aggregate; never default this value. Supported `plan_type` values are exactly `PPO`, `HMO`, `EPO`, and `HDHP`; the build refuses to start on anything else.
+`EmbededDeductible` comes from the plan dict's `embedded_deductible` key, and Claros encodes it inverted: `"N"` = embedded, `"Y"` = aggregate (verified against a Claros export, November 2026; the build handles the inversion, so plan dicts keep True = embedded) — REQUIRED for every plan type, HDHPs included (the build raises a KeyError without it; see clarifying question 7 for the SBC read rule). Earlier versions set this flag by plan type instead of reading the SBC; never default this value. Supported `plan_type` values are exactly `PPO`, `HMO`, `EPO`, and `HDHP`; the build refuses to start on anything else.
 
 ### Rx tiers with coinsurance plus a dollar maximum
 
@@ -182,7 +195,7 @@ no-OON plan, and never present the file without the flag above.
 
 ### Rx copays
 
-The Rx subplan (`SubPlanId="4"`) has 16 `<PlanElement>` rows covering the Generic/BrandFormulary/BrandNonFormulary/Specialty × Retail/Mail × New/Maintenance grid. See `references/field_mapping.md` for the full Sequence ID map.
+The Rx PlanElements (16 rows; in SubPlan 4 in Ada-style references, folded into SubPlan 1 in the bundled blank references, and found automatically by `get_rx_planelements()`) cover the Generic/BrandFormulary/BrandNonFormulary/Specialty × Retail/Mail × New/Maintenance grid. See `references/field_mapping.md` for the full Sequence ID map.
 
 For each, set `Copay1Min` to the SBC copay and `Deductible2Applies="Y"` if the SBC says "after the deductible has been met", otherwise `"N"`.
 
@@ -202,74 +215,11 @@ The UI mirror lives at `Scenario/MedCategoryParentNode/PlanDesignAccordion1Paren
 
 ## Multi-tier plans (3+ network levels)
 
-Two patterns land here (full guide: `references/multi_tier.md`):
-
-**Pattern A — provider steerage** (e.g. UMR/Wausau hospital plans): FOUR real
-network levels — rich/domestic, preferred, broad, OON — with different
-deductibles/MOOPs/coinsurance per tier. Claros holds only three network slots,
-so you map 4 real levels onto 3.
-
-**Pattern B — sub-network copay split** (e.g. BCI ChoiceDocs, verified on the
-Zoroco Packaging build): ONE network, one shared in-network ded/MOOP/coins,
-but two in-network copay levels for office visits and urgent care. Build as
-Tier 1 = preferred sub-network, Tier 2 = all other in-network with IDENTICAL
-t2 ded/MOOP/plan-pays and the higher copays in `t2_pcp_copay` /
-`t2_specialist_copay` / `t2_flat_copays`. Copays that survive out-of-network
-(e.g. an ER copay+ded+coins) go in `cross_tier_copays`; copays that stop at
-the network edge (urgent care) must NOT. A plan in the same file with no
-sub-network split (typically the HDHP) is built as an effective 2-tier
-scenario: `tier2_active=False`, t2_* mirroring Tier 1, zero Tier 2 weight in
-`tier_split`. The `tier_split` utilization percentages are never in an SBC —
-always deliver them as a flagged placeholder the user sets in Claros.
-
-Pattern A essentials:
-
-- **Reference**: `blank_reference_2tier.xml` cannot hold a middle tier. Use the
-  bundled `assets/blank_reference_3tier.xml` (`REF_FILE = DEFAULT_REF_3TIER`)
-  or a client-supplied 3-tier Claros export.
-- **Never build a multi-tier plan on the 2-tier reference** - the middle tier
-  will be silently dropped and the file will model coverage the plan does not
-  have.
-- **Mapping (ASK THE USER)**: usual choice is Claros Tier 1 = richest tier,
-  Claros Tier 2 = broad tier, Claros OON = OON, dropping the preferred tier.
-- **Coinsurance from the SPD**: take each tier's default from the SPD "Plan
-  Participation Rate, Unless Otherwise Stated" row, not from an SBC exception line.
-- **Rich-tier copays**: supply `facility_lines` (inpatient, OP surgery and OP
-  Other facility rows from the SPD; the build places them), `t1_flat_copays`
-  (per-visit copays keyed by service ID from `field_mapping.md`), and take
-  `in_net_plan_pays` from the SPD. Non-copay services stay coinsurance.
-- **Cross-tier copays**: ER, urgent care, and ambulance often carry the same copay
-  in EVERY tier — put them in `cross_tier_copays` so they land in Tier 2 and OON
-  too, not just Tier 1.
-- **Accordion**: IP/PCP/Specialist show copays in the rollup; OP/RAD/O stay
-  coinsurance (the individual OP copays live on the PlanElements).
-- The build script auto-detects SubPlan 2 and only writes Tier 2 when both the
-  reference has it and the plan dict carries `t2_*` fields. A commented multi-tier
-  plan-dict example is in the embedded script.
+Whenever "The tier decision" lands on 3-tier (Pattern A provider steerage, or Pattern B sub-network copay split), read `references/multi_tier.md` in full before building. It holds the 4-to-3 mapping, the SPD coinsurance rule, rich-tier and cross-tier copays, Pattern B's `t2_*` fields, `tier2_active` for single-in-network plans inside a 3-tier file, `tier_split`, and the accordion pattern. Two rules apply even before you open it: never build a multi-tier plan on the 2-tier reference (the middle tier is silently dropped), and always deliver `tier_split` as a flagged placeholder the user sets in Claros.
 
 ## Fields to placeholder (not from SBC)
 
-The SBC does not contain census, enrollment, financial, or stop-loss data. Use these minimal placeholders:
-
-| Field | Placeholder Value |
-|-------|------------------|
-| `CensusType1.TotalEE` | `1` |
-| `CensusType1.EEOnlyPct` | `1` |
-| `CensusType23.EE` (one row only) | `1` (Male, age 40, tier 1) |
-| `EECount.EECount1` | `1` |
-| `EECount.EECount2-5` | `""` (empty string) |
-| `Zip.EnrolledEmp` (first zip) | `1` |
-| `Zip.EnrolledEmp` (other zips) | `0` |
-| `PlanTierEnrollment` | `EE=1, others=0, Total=1` |
-| `Enrollment` | `EEs=1, TotalMembers=1, DependentPerEmployee=1, AdultEquivalent=1` |
-| `StopLoss` PEPM/dollar fees | `1` |
-| `StopLoss` percentages (admin/profit/tax/commission) | `0.01` |
-| `StopLoss.AgMargin` | `1` |
-| `StopLoss.sf_PharmacyRebatePEPM` | `0` |
-| `ReimbursementAccount.EmployeeContribution` | `1` (per tier) |
-| `Normalization.TotalEE` | `1` |
-
-After upload, the user updates these in Claros with real census, enrollment, and underwriting data.
+The build writes minimal non-zero placeholders for census, enrollment, stop-loss and contribution fields automatically (zeros cause divide-by-zero failures in Claros). The full table is in `references/field_mapping.md`, "Fields to placeholder". After upload, the user updates these in Claros with real census, enrollment, and underwriting data.
 
 ## Build script usage
 
@@ -318,7 +268,27 @@ Each plan dictionary has the SBC values:
 
 For HDHPs, set `pcp_copay=0` and `specialist_copay=0`, and set ALL `*_after_ded` flags to `True` regardless of what the SBC says (IRS rule).
 
-Extract and read the script from `references/build_script.md` before running it, then adapt constants like the trend date or scenario count if needed.
+**How to run it (do not read the whole build script, do not retype it, do not edit it).**
+
+1. Extract the script with one command. `<skill-dir>` is the folder this SKILL.md is in:
+   ```bash
+   awk '/BEGIN EMBEDDED PYTHON/{f=1}/END EMBEDDED PYTHON/{f=0}f' <skill-dir>/references/build_script.md \
+     | awk '/^```python/{c=1;next}/^```/{c=0}c' > build_claros_xml.py
+   python3 -c "import ast; ast.parse(open('build_claros_xml.py').read())" && wc -l build_claros_xml.py   # about 2,250 lines
+   ```
+2. For the full plan-dict field reference and the commented 2-tier, multi-tier and HDHP examples, view ONLY the top of the extracted file, through the closing `]` of the example `PLAN_DICTS` (about the first 335 lines). Nothing below that needs reading to build a file.
+3. Write `run_build.py` with the settings for this client, then run `python3 run_build.py`:
+   ```python
+   import build_claros_xml as b
+   b.REF_FILE = b.DEFAULT_REF          # or b.DEFAULT_REF_3TIER, or a client export path (The tier decision)
+   b.OUT_FILE = "/mnt/user-data/outputs/<Client>_Eff_<YYYY-M-D>.xml"
+   b.DATA_YEAR = "2026"
+   b.TREND_DATE = "01/01/2026"         # MM/DD/YYYY
+   b.NORMALIZE_DATE = "01/01/2026"
+   b.PLAN_DICTS = [ ... ]              # one dict per scenario, in Claros order
+   b.main()                            # runs every check; writes OUT_FILE only on a pass
+   ```
+   These are the only values a session sets. To fix a wrong value, edit `run_build.py` and re-run.
 
 ## Validation before delivering — MANDATORY, NON-SKIPPABLE
 
@@ -373,7 +343,8 @@ On every copay-style build, ALWAYS include the **Treated as a read** block, copi
 
 Whenever the build prints `DISPLAY NOTE: OUTPATIENT (OP) ROW`, include that note in the presentation VERBATIM, with its "Applies to" list. It tells the reviewer that the OP dropdown row showing coinsurance over ER, urgent care and outpatient surgery copays is Claros's own convention, not an error (builder decision, October 2026).
 
-Three more items this section always carries when they apply:
+Four more items this section always carries when they apply:
+- **Inpatient copay basis**: whenever any inpatient row carries a copay, add "Confirm the Per Admit / Per Day setting on the inpatient rows in Claros; the code mapping is not yet verified against a Claros export (known_issues.md #19)."
 - **Unmapped SBC lines**: every copay or off-default coinsurance the inventory (question 9) could not place on a confirmed sequence, quoted from the SBC, as "set manually in Claros after upload." Never deliver silently without these.
 - **Display note for copay+coins and specialty-coins tiers**: Claros shows these with the MEMBER share in "Participant %/Srv" while the plan percentage column reads 100 — that is the verified-correct display, not an error (a POC tester reported it as a bug). Say so preemptively whenever the build used `Copay1Perc`/`ParticipantPct`, and list any `after_ded: True` copay+coins combination as a verify-in-Claros item (that exact combination is not export-verified).
 - **Separate Rx deductible**: when the plan has its own prescription deductible or Rx MOOP, the known_issues.md #17 confirmation items.
@@ -383,7 +354,7 @@ Three more items this section always carries when they apply:
 
 ## Build script location
 
-Because of enterprise restrictions there is no loose `.py` file in this skill. The full build script (`build_claros_xml.py`, ~1,800 lines) lives in **`references/build_script.md`** as inert double-fenced text, together with the extraction instructions. It loads only when you reach step 4 of the workflow, keeping this file scannable. Read that file, extract the script verbatim to your working directory, and run it — never retype it from memory or reconstruct it partially.
+Because of enterprise restrictions there is no loose `.py` file in this skill. The full build script (`build_claros_xml.py`, about 2,250 lines) lives in **`references/build_script.md`** as inert double-fenced text. Extract it with the command in "Build script usage" rather than reading the file into context, and never retype it from memory or reconstruct it partially.
 
 ---
 
@@ -391,7 +362,7 @@ Because of enterprise restrictions there is no loose `.py` file in this skill. T
 
 From the September 1, 2026 AI Quality Evaluator run:
 
-- *SPD not added to frontmatter triggers.* Builder relies on explicit `/sbc-to-clarosv3` invocation; broader trigger phrasing is not wanted.
+- *SPD not added to frontmatter triggers.* Builder relies on explicit `/sbc-to-claros...` invocation; broader trigger phrasing is not wanted.
 - *2026 constants left as-is* (`DATA_YEAR`, `TREND_DATE`, `NORMALIZE_DATE`; the $9,200 ACA MOOP cap formerly in clarifying question 7 was removed in v5.0). Builder updates these manually at each plan-year rollover.
 
 ## Changelog

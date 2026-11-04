@@ -2,6 +2,19 @@
 
 Version history for maintainers. Nothing in this file is needed to build a Claros XML; the build rules live in SKILL.md and the other reference files. The "Review decisions (accepted, do not re-flag)" block lives in SKILL.md.
 
+**v5.1-test (vTest) — November 4, 2026**
+
+Test build applying the November 4, 2026 AI Quality Evaluator findings on v5.0, for side-by-side comparison. Renamed to `sbc-to-clarosvtest`, triggered only by explicit invocation so it never competes with v5. No build logic changed: the example plans build byte-identically to v5.
+
+- **Script extraction by one command, run through `run_build.py`.** Sessions no longer read the 128 KB build_script.md or retype the 2,250-line script; they extract it with awk and set only `REF_FILE`, `OUT_FILE`, the dates and `PLAN_DICTS` from a small runner. *Reason:* "write verbatim" invited reading and retyping the whole script, the largest per-build token cost and a transcription risk.
+- **"Adapt it as needed" removed.** The script is never edited; a design the plan dict cannot express stops the build and is reported. *Reason:* editing script logic was the root cause of Run A.
+- **Fixed question rounds.** The tier decision and questions 1, 2, 4, 5, 6, 7 and 9 go in four fixed rounds sized to the tool's 3-question limit; questions 3 and 8 moved under "Treated as a read". *Reason:* no batching order existed (open v4 finding D5).
+- **Inpatient Per Admit / Per Day flagged on every inpatient-copay build.** *Reason:* the code mapping is unverified (known_issues.md #19), the same class of risk as the embedded flag.
+- **Multi-tier body section cut to a pointer; placeholder table moved to field_mapping.md.** *Reason:* the body described the multi-tier patterns three times.
+- **"Known open items" list added to known_issues.md.** *Reason:* open status lived only in the changelog, which builds do not read.
+- **Stale text fixed:** script line count, "all twelve checks", the v3 trigger name, the Rx SubPlan wording, and the v3.1 history sentence that contradicted N = embedded.
+- **Not applied:** trimming incident narratives out of known_issues.md (optional, and rewriting rule text there risks dropping a rule).
+
 **v5.0 — November 4, 2026**
 
 - **Embedded deductible flag inverted to match Claros.** Claros encodes `EmbededDeductible="N"` as embedded and `"Y"` as aggregate. v4 and earlier wrote `"Y"` for embedded, so every embedded plan loaded into Claros as aggregate and vice versa.

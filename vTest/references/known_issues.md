@@ -334,6 +334,19 @@ whenever an SBC/SPD shows more than two in-network levels of either kind.
 **Mapping status and the BASIS TEST.** Per Admit = `"A"` rests on the blank shells shipping `"A"` with the UI defaulting to Per Admit; Per Day = `"D"` rests on the CRMC client fill. Ben's Run A file (display `"D"`, calculation `"A"`) displayed Per Admit, which fits the mapping only if Claros sets the radio from the calculation rows. To close it: import the three-scenario BASIS TEST file into a scratch Claros case and read the Inpatient (IP) radio on each. Scenario 1 (`A` on both layers) should read Per Admit and Scenario 2 (`D` on both) Per Day; if they read the other way, swap the two codes in `IP_BASIS_CODES` and nowhere else. Scenario 3 (display `A`, calculation `D`) shows which layer the radio follows. Record the result here.
 
 
+## Known open items (unverified or unresolved)
+
+Keep this list current: add an item when a convention is assumed rather than export-verified, and remove it when a Claros export proves it. The embedded deductible flag was exactly this kind of item until November 2026, and it shipped inverted in every file until an export proved it.
+
+- **Inpatient Per Admit / Per Day codes** (`"A"` / `"D"`): not export-verified; close with the BASIS TEST import (#19). The output presentation flags it on every build with an inpatient copay.
+- **Separate Rx deductible and Rx MOOP**: SubPlan-level vs element-level convention unverified (#17); flagged in the output presentation.
+- **Rx SubPlan 4 `EmbededDeductible="N"`**: has no effect at a $0 Rx deductible; untested with a nonzero Rx deductible.
+- **Mail-order specialty "not covered"**: no verified XML representation; mirrored from retail and flagged (SKILL.md, Rx tiers).
+- **HMO / EPO with no OON coverage**: no verified XML representation for the OON tier; user picks mirror or sentinel and it is flagged (SKILL.md).
+- **Copay + coinsurance with `after_ded: True`**: not export-verified; flagged as verify-in-Claros.
+- **Copay1 vs Copay2 attributes**: pending a copay-bearing Claros export (check 1, `SIG_ATTR_ADD_EXEMPT`).
+- **v4 consistency findings**: D3 (OON ER copay carry) still open; D4 (option text behind the same letter) closed only for pinned question F1; D5 (question order drift) addressed in vTest by the fixed question rounds in SKILL.md, not yet confirmed by a repeat-run test.
+
 ## Diagnosing future upload failures
 
 When the user reports a Claros upload error:
