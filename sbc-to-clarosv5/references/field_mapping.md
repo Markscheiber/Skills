@@ -289,14 +289,14 @@ Set `FamDed` and `FamMoop` to the family deductible and MOOP from the SBC.
 ### PPO
 - Copay-based for office visits ($20-50 PCP, $40-80 Specialist typical)
 - Coinsurance 70/80/90% plan-pays in-network, 50/60/70% OON
-- Embedded deductible: `N`
+- Embedded deductible: read from the SBC's family-deductible wording, never assumed by plan type (`EmbededDeductible="N"` = embedded, `"Y"` = aggregate)
 - Generic Rx usually NOT subject to deductible
 - Brand and Specialty Rx usually subject to deductible
 
 ### HDHP
 - No copays for office visits — everything subject to deductible
 - Plan-pays % only applies after deductible
-- Embedded deductible: `Y` (when family ded > ACA individual MOOP cap)
+- Embedded deductible: defaults to embedded (`EmbededDeductible="N"`), and must be embedded when family ded > ACA individual MOOP cap; write aggregate (`"Y"`) only when the SBC reads aggregate
 - ALL Rx subject to deductible (IRS rule for HSA eligibility)
 - Family deductible 2x individual is typical
 - 2025 minimum HDHP deductible: $1,650 individual / $3,300 family

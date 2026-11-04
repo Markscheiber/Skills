@@ -991,7 +991,10 @@ def apply_plan_design(scenario, pd):
                        pd["oon_moop_ind"], pd["oon_moop_fam"],
                        embedded, pd["oon_plan_pays"])
 
-    # Rx subplan: no separate Rx deductible
+    # Rx subplan: no separate Rx deductible. The "N" below is the
+    # unchanged v4 value; with Deductible2Individual=0 the embedded/aggregate
+    # flag has no effect on Rx (Claros "N" = embedded). Left as-is pending a
+    # Claros export that shows SubPlan 4 with a nonzero Rx deductible.
     sp4 = find_subplan(plan, "4")
     if sp4 is not None:
         d = sp4.find("Deductible/Deduct")
