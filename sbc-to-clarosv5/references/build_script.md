@@ -140,10 +140,9 @@ NORMALIZE_DATE = "01/01/2026"
 #   name), plan_type ("PPO"/"HMO"/"EPO"/"HDHP"), in_net_ded_ind/fam,
 #   in_net_moop_ind/fam, in_net_plan_pays, oon_ded_ind/fam, oon_moop_ind/fam,
 #   oon_plan_pays, pcp_copay, specialist_copay (0 for HDHP), the Rx tiers, and
-#   embedded_deductible (REQUIRED for PPO/HMO/EPO - True when the SBC says each
-#   family member meets their own individual deductible, False when the family
-#   deductible is aggregate-only; HDHPs default True, override for the rare
-#   aggregate HDHP).
+#   embedded_deductible (REQUIRED for EVERY plan type, HDHPs included - True
+#   when the SBC says each family member meets their own individual deductible,
+#   False when the family deductible is aggregate-only).
 #
 # Service-level fields (2-TIER PLANS TOO - these are NOT multi-tier-only;
 # omitting them on a plan whose SBC prints the copays ships those services as
@@ -340,10 +339,11 @@ PLAN_DICTS = [
     #     "oon_plan_pays": 0.60,
     #     # ... plus the same rx_* tiers as above ...
     # },
-    {   # ---- HDHP (defaults to embedded -> EmbededDeductible="N"; set
-        #      embedded_deductible=False for an aggregate HDHP -> "Y") ----
+    {   # ---- HDHP ----
         "scenario_name": "HSA HDHP 3400",  # plan name only - NO client name
         "plan_type": "HDHP",
+        "embedded_deductible": True,   # REQUIRED - from the SBC's family-deductible
+                                       # language; False for an aggregate HDHP
         "in_net_ded_ind": 3400, "in_net_ded_fam": 6800,
         "in_net_moop_ind": 5000, "in_net_moop_fam": 10000,
         "in_net_plan_pays": 0.80,
@@ -906,28 +906,25 @@ def apply_plan_design(scenario, pd):
     # Embedded vs aggregate deductible is a PLAN FACT read off the SBC, not a
     # function of plan type. v3.1 hardcoded N for every non-HDHP, which built
     # two embedded PPOs as aggregate in POC test 6 (and could do the reverse
-    # on an aggregate HDHP). HDHPs still DEFAULT to embedded when the key is
-    # omitted, but read the SBC and set False when it says aggregate (the ACA
-    # embedding rule covers the MOOP, not the deductible); PPO/HMO/EPO must state it -
-    # the KeyError makes the question unskippable rather than silently
-    # defaulted. SBC read rule: "each family member must meet their own
+    # on an aggregate HDHP). Every plan type must state it, HDHPs included (v5.0:
+    # HDHPs used to default to embedded, which would silently mis-build an
+    # aggregate HDHP like Augustana's; the ACA embedding rule covers the MOOP,
+    # not the deductible) - the KeyError makes the question unskippable rather
+    # than silently defaulted. SBC read rule: "each family member must meet their own
     # individual Deductible" / "per person" = embedded (True); family
     # deductible met only in aggregate = aggregate (False). See SKILL.md
     # clarifying question 7.
     # CLAROS ENCODING (verified against a Claros export, Nov 2026, Augustana
     # University): EmbededDeductible="N" = EMBEDDED, "Y" = AGGREGATE. The
     # attribute name reads the opposite way; do not "fix" this back.
-    if pd["plan_type"] == "HDHP":
-        embedded = "N" if pd.get("embedded_deductible", True) else "Y"
-    else:
-        if "embedded_deductible" not in pd:
-            raise KeyError(
-                f"{pd['scenario_name']}: embedded_deductible is required for "
-                "PPO/HMO/EPO plans - read the SBC's family-deductible language "
-                "(\"each family member must meet their own individual "
-                "Deductible\" = True; aggregate-only = False) and set it "
-                "explicitly. Do not guess.")
-        embedded = "N" if pd["embedded_deductible"] else "Y"   # N = embedded (see above)
+    if "embedded_deductible" not in pd:
+        raise KeyError(
+            f"{pd['scenario_name']}: embedded_deductible is required for "
+            "every plan type, HDHPs included - read the SBC's family-deductible language "
+            "(\"each family member must meet their own individual "
+            "Deductible\" = True; aggregate-only = False) and set it "
+            "explicitly. Do not guess.")
+    embedded = "N" if pd["embedded_deductible"] else "Y"   # N = embedded (see above)
 
     # Derive coinsurance from structure: when a tier's deductible equals its
     # MOOP, there is no coinsurance band left — once the deductible is paid the
@@ -2229,8 +2226,7 @@ def main():
 
     print(f"Wrote {OUT_FILE}  ({os.path.getsize(OUT_FILE)} bytes)\n")
     for pd in PLAN_DICTS:
-        is_emb = pd.get("embedded_deductible", True) \
-            if pd["plan_type"] == "HDHP" else pd["embedded_deductible"]
+        is_emb = pd["embedded_deductible"]
         emb = ("embedded (EmbededDeductible=N)" if is_emb
                else "aggregate (EmbededDeductible=Y)")
         print(f"{pd['scenario_name']} [{pd['plan_type']}, {emb}]")

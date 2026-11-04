@@ -116,7 +116,7 @@ for z in zips.findall("Zip"):
 
 **Cause**: The flag was set by assumption (plan type, a default, or a compliance belief) instead of the SBC's family-deductible wording. Claros encoding: `EmbededDeductible="N"` = embedded, `"Y"` = aggregate (verified November 2026). Note that no law requires an embedded DEDUCTIBLE: the ACA embedding rule requires an individual out-of-pocket MAXIMUM inside family coverage, which is a MOOP rule, so an aggregate deductible HDHP is compliant and must be built as aggregate.
 
-**Fix**: Read every plan's flag from its SBC ("each family member must meet their own individual deductible" = embedded, `embedded_deductible=True`; "aggregate" / family met only as a whole = `False`). HDHPs default to embedded only when the key is omitted; set it explicitly whenever the SBC states it.
+**Fix**: Read every plan's flag from its SBC ("each family member must meet their own individual deductible" = embedded, `embedded_deductible=True`; "aggregate" / family met only as a whole = `False`). The key is required on every plan type, HDHPs included; the build refuses to start without it.
 
 
 ## 7. HDHP Rx copay must be zeroed, not carried from the SBC

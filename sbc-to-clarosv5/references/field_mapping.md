@@ -296,7 +296,7 @@ Set `FamDed` and `FamMoop` to the family deductible and MOOP from the SBC.
 ### HDHP
 - No copays for office visits — everything subject to deductible
 - Plan-pays % only applies after deductible
-- Embedded deductible: read from the SBC like any plan; the build defaults to embedded (`EmbededDeductible="N"`) only when the key is omitted, and an SBC that reads aggregate writes `"Y"`. Aggregate deductible HDHPs are compliant (the ACA embedding rule covers the MOOP, not the deductible)
+- Embedded deductible: read from the SBC like any plan (`embedded_deductible` is required; embedded writes `EmbededDeductible="N"`, aggregate writes `"Y"`). Aggregate deductible HDHPs are compliant (the ACA embedding rule covers the MOOP, not the deductible)
 - ALL Rx subject to deductible (IRS rule for HSA eligibility)
 - Family deductible 2x individual is typical
 - 2025 minimum HDHP deductible: $1,650 individual / $3,300 family
