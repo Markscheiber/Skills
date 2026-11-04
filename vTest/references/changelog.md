@@ -2,6 +2,24 @@
 
 Version history for maintainers. Nothing in this file is needed to build a Claros XML; the build rules live in SKILL.md and the other reference files. The "Review decisions (accepted, do not re-flag)" block lives in SKILL.md.
 
+**v5.1-test port of v5.1 (crosswalk + PP display fix) — November 4, 2026**
+
+The v5.1 changes made to `sbc-to-clarosv5` (commit d5a2977), merged into vTest by a three-way merge from v5.0. vTest's own evaluator changes (runner extraction, fixed question rounds, Treated-as-a-read questions 3 and 8, open items list) are kept; the v5.1 content is identical to the v5 folder. The open items list drops Copay1 vs Copay2 and narrows the inpatient basis item to Per Day only.
+
+
+Driven by Mark Scheiber's pinned Claros export on the AZ Blue 2027 build (PPO 5000 80 scenario): a distinct copay hand-keyed on every named line of the Tier Copays screen, exported, and read back.
+
+- **Full medical crosswalk verified.** Every medical sequence now has a confirmed Claros name (field_mapping.md, build-script `SERVICE_NAMES`): IP 102 Medical / 105 Surgical / 101 Maternity / 103 MHSA / 104 NICU; RAD 601 Complex OP Hospital / 602 Complex OP Imaging Center / 604 Routine; LP 201; PH 511 Special Visit, 503 Consultation, 506 Maternity, 514 Therapy, 507 Mental Health, 512 Substance Abuse, 502 Chiro, 501 Anesthesia, 504 Immunizations, 510 Preventive, 513 Surgery, 508 Other; O 404 DME, 407 Rx Non-PBM, 402 Ambulance, 405 Home Health, 403 Dialysis, 408 SNF, 406 Hospice, 401 All Other.
+  *Reason:* the Weak and Names-unknown rows forced every imaging, rehab, chiro, DME, ambulance and hospice line into the set-manually list (on AZ Blue, a $300 CT/MRI copay could not be placed).
+- **Stop rule narrowed (doc + inventory guidance).** Named rows are placed directly via `t1_flat_copays` / `t1_service_coins` / `cross_tier_copays`. Only lines the XML cannot express on one row still stop: place-of-service splits on one SBC line, day-band benefits, telehealth, OON-only exceptions on 2-tier builds. Facility rows still go only through the facility read (one value on all five IP rows, unchanged).
+- **PH fill unchanged, now overridable by name (builder decision).** The PH rows still default to the specialist copay; question 9 now tells the session to walk them by name and override any the SBC prices differently (therapy, anesthesia, physician surgery).
+- **PP display row fixed (code change, known_issues.md #20).** Accordion `PP` is the Physician Other rollup, not PCP. `MEDTYPE_TO_SEQ` changed to `{"PP": "508", "SP": "511"}`; new `mirror_accordion_from_element()` writes PP/SP from the elements actually written (Tier 1 and Tier 2); check 8 compares against the same sequences.
+- **Coverage table prints names** beside every sequence, so the post-build SBC walk is done by service name.
+- **Also verified by the export:** the Copay1 field family (`Copay1Flag`/`Copay1Min`, Copay2 off) and Per Admit = `IPCopayPerDay="A"` with `IPDayAdmit="A"`.
+- **Example fix:** the `t1_service_coins` examples used `403` as DME; 403 is Dialysis, DME is `404`.
+- **Regression:** the AZ Blue four-plan build (3 PPOs + HSA HDHP, 2-tier) passes all checks and differs from v5.0 only on the three T1 PP rows; named-row overrides (RAD 601/602 copay, PH 514/501/513/508 coinsurance, hospice 406 covered in full), 3-tier Pattern B with an inactive-tier HDHP, and 3-tier Pattern A steerage all pass; a PP row tampered back to the PCP copay fails check 8.
+- **Possible follow-up (not done):** with IP subtypes now named, the facility read could place the SBC's mental-health-inpatient row on 103 and childbirth on 101 instead of asking F1. Left as a builder decision.
+
 **v5.1-test (vTest) — November 4, 2026**
 
 Test build applying the November 4, 2026 AI Quality Evaluator findings on v5.0, for side-by-side comparison. Renamed to `sbc-to-clarosvtest`, triggered only by explicit invocation so it never competes with v5. No build logic changed: the example plans build byte-identically to v5.

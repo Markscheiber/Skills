@@ -334,17 +334,25 @@ whenever an SBC/SPD shows more than two in-network levels of either kind.
 **Mapping status and the BASIS TEST.** Per Admit = `"A"` rests on the blank shells shipping `"A"` with the UI defaulting to Per Admit; Per Day = `"D"` rests on the CRMC client fill. Ben's Run A file (display `"D"`, calculation `"A"`) displayed Per Admit, which fits the mapping only if Claros sets the radio from the calculation rows. To close it: import the three-scenario BASIS TEST file into a scratch Claros case and read the Inpatient (IP) radio on each. Scenario 1 (`A` on both layers) should read Per Admit and Scenario 2 (`D` on both) Per Day; if they read the other way, swap the two codes in `IP_BASIS_CODES` and nowhere else. Scenario 3 (display `A`, calculation `D`) shows which layer the radio follows. Record the result here.
 
 
+## 20. Physician Other display row showed the PCP copay (v5.0 and earlier, fixed in v5.1)
+
+**Symptom**: on every copay-style plan, the "Physician Other(PH)" header in the Claros Tier Copays screen showed the PCP copay (e.g. $25) while every row under it carried the specialist copay ($75). Math was unaffected; the display misled reviewers.
+
+**Cause**: the build assumed accordion `MedType="PP"` meant "primary physician" and mirrored PCP `509` onto it. A pinned export (AZ Blue, November 2026: a distinct copay keyed on every UI line, then exported) showed the value keyed on the **Physician Other(PH)** rollup landed on the `PP` row, the **Specialty Physician** rollup on `SP`, and PCP `509` on no accordion row at all. Check 8 compared PP against 509, so it passed the wrong display.
+
+**Fix (v5.1)**: `MEDTYPE_TO_SEQ` is now `{"PP": "508", "SP": "511"}` (508 = PH Other, the non-preventive child of the Physician Other rollup). The PP/SP rows are written by `mirror_accordion_from_element()`, which reads the element ACTUALLY WRITTEN for that sequence after the tier loop, in Tier 1 and Tier 2, so no override path (`t1_flat_copays`, `t1_service_coins`, `ph_other_copay`, the PH fill) can desync them. Check 8 compares against the same sequences. Regression: the AZ Blue four-plan build differs from v5.0 ONLY on the three T1 PP rows ($25 -> $75/$75/$100); a file with the PP row tampered back to $25 fails check 8 ("PP: CopayMinT1=25 but PlanElement 508 Copay1Min=75").
+
+
 ## Known open items (unverified or unresolved)
 
-Keep this list current: add an item when a convention is assumed rather than export-verified, and remove it when a Claros export proves it. The embedded deductible flag was exactly this kind of item until November 2026, and it shipped inverted in every file until an export proved it.
+Keep this list current: add an item when a convention is assumed rather than export-verified, and remove it when a Claros export proves it. Closed by the v5.1 pinned export: every medical service sequence name (field_mapping.md crosswalk), the Copay1 attribute family, and the Per Admit code. The embedded deductible flag was exactly this kind of item until November 2026, and it shipped inverted in every file until an export proved it.
 
-- **Inpatient Per Admit / Per Day codes** (`"A"` / `"D"`): not export-verified; close with the BASIS TEST import (#19). The output presentation flags it on every build with an inpatient copay.
+- **Inpatient Per Day code** (`"D"`): Per Admit = `"A"` is now export-verified (v5.1 pinned export: Per Admit radio wrote `IPCopayPerDay="A"` on the IP elements and the IP accordion row). Per Day = `"D"` still rests on the CRMC client fill; close it with the BASIS TEST import (#19). The output presentation flags it on every build with a per-day inpatient copay.
 - **Separate Rx deductible and Rx MOOP**: SubPlan-level vs element-level convention unverified (#17); flagged in the output presentation.
 - **Rx SubPlan 4 `EmbededDeductible="N"`**: has no effect at a $0 Rx deductible; untested with a nonzero Rx deductible.
 - **Mail-order specialty "not covered"**: no verified XML representation; mirrored from retail and flagged (SKILL.md, Rx tiers).
 - **HMO / EPO with no OON coverage**: no verified XML representation for the OON tier; user picks mirror or sentinel and it is flagged (SKILL.md).
 - **Copay + coinsurance with `after_ded: True`**: not export-verified; flagged as verify-in-Claros.
-- **Copay1 vs Copay2 attributes**: pending a copay-bearing Claros export (check 1, `SIG_ATTR_ADD_EXEMPT`).
 - **v4 consistency findings**: D3 (OON ER copay carry) still open; D4 (option text behind the same letter) closed only for pinned question F1; D5 (question order drift) addressed in vTest by the fixed question rounds in SKILL.md, not yet confirmed by a repeat-run test.
 
 ## Diagnosing future upload failures
