@@ -110,13 +110,13 @@ for z in zips.findall("Zip"):
 
 **Fix**: Whenever you change a PlanElement's copay or deductible-applies, update the matching PlanDesignAccordion1 row. See `field_mapping.md` for the mapping.
 
-## 6. Embedded vs aggregate HDHP deductible
+## 6. Embedded vs aggregate deductible (every plan type, including HDHPs)
 
-**Symptom**: HDHP file loads but Claros flags it as out of compliance, or family OOP calculations come out wrong.
+**Symptom**: The file loads, but Claros shows an embedded plan as aggregate (or the reverse), so family deductible and OOP calculations come out wrong.
 
-**Cause**: For HDHPs, when family deductible exceeds the ACA individual MOOP cap (`$9,200` for 2025/2026), federal law requires an embedded individual deductible. Building such a plan as aggregate is non-compliant. Claros encoding: `EmbededDeductible="N"` = embedded, `"Y"` = aggregate.
+**Cause**: The flag was set by assumption (plan type, a default, or a compliance belief) instead of the SBC's family-deductible wording. Claros encoding: `EmbededDeductible="N"` = embedded, `"Y"` = aggregate (verified November 2026). Note that no law requires an embedded DEDUCTIBLE: the ACA embedding rule requires an individual out-of-pocket MAXIMUM inside family coverage, which is a MOOP rule, so an aggregate deductible HDHP is compliant and must be built as aggregate.
 
-**Fix**: Default all HDHPs to embedded (`EmbededDeductible="N"`). Only build aggregate (`"Y"`, via `embedded_deductible=False`) when the SBC reads aggregate or the user explicitly confirms it's an aggregate-only HDHP with family deductible at or below the individual MOOP cap.
+**Fix**: Read every plan's flag from its SBC ("each family member must meet their own individual deductible" = embedded, `embedded_deductible=True`; "aggregate" / family met only as a whole = `False`). HDHPs default to embedded only when the key is omitted; set it explicitly whenever the SBC states it.
 
 
 ## 7. HDHP Rx copay must be zeroed, not carried from the SBC

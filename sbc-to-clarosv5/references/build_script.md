@@ -906,9 +906,9 @@ def apply_plan_design(scenario, pd):
     # Embedded vs aggregate deductible is a PLAN FACT read off the SBC, not a
     # function of plan type. v3.1 hardcoded N for every non-HDHP, which built
     # two embedded PPOs as aggregate in POC test 6 (and could do the reverse
-    # on an aggregate HDHP). HDHPs still DEFAULT to embedded (the modern norm,
-    # and legally required when the family deductible exceeds the ACA
-    # individual MOOP cap) but can be overridden; PPO/HMO/EPO must state it -
+    # on an aggregate HDHP). HDHPs still DEFAULT to embedded when the key is
+    # omitted, but read the SBC and set False when it says aggregate (the ACA
+    # embedding rule covers the MOOP, not the deductible); PPO/HMO/EPO must state it -
     # the KeyError makes the question unskippable rather than silently
     # defaulted. SBC read rule: "each family member must meet their own
     # individual Deductible" / "per person" = embedded (True); family
